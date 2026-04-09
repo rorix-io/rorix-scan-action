@@ -7,6 +7,7 @@ import { formatResults } from "./format";
 
 async function run() {
   try {
+    const apiKey = core.getInput("api-key", { required: true });
     const failOnSeverity = core.getInput("fail-on-severity") || "high";
     const failOnScore = parseInt(core.getInput("fail-on-score") || "0", 10);
     const licensePolicy = core.getInput("license-policy") || "none";
@@ -39,7 +40,7 @@ async function run() {
 
     // Audit
     core.info(`Auditing ${packages.length} package(s) via ${rorixUrl}...`);
-    const audit = await auditPackages(packages, rorixUrl);
+    const audit = await auditPackages(packages, rorixUrl, apiKey);
 
     // Format results
     const result = formatResults(audit, { failOnSeverity, failOnScore, licensePolicy });

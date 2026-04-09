@@ -26518,14 +26518,17 @@ ${refs}
   </ItemGroup>
 </Project>`;
 }
-async function auditPackages(packages, rorixUrl) {
+async function auditPackages(packages, rorixUrl, apiKey) {
   if (packages.length === 0) {
     return { packages: [], totalVulns: 0, averageScore: 100 };
   }
   const content = buildCsprojContent(packages);
   const res = await fetch(`${rorixUrl}/api/audit`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`
+    },
     body: JSON.stringify({
       content,
       filename: "scan.csproj"
@@ -26634,6 +26637,7 @@ function formatResults(audit, options) {
 // src/index.ts
 async function run() {
   try {
+    const apiKey = core2.getInput("api-key", { required: true });
     const failOnSeverity = core2.getInput("fail-on-severity") || "high";
     const failOnScore = parseInt(core2.getInput("fail-on-score") || "0", 10);
     const licensePolicy = core2.getInput("license-policy") || "none";
@@ -26659,7 +26663,7 @@ async function run() {
       return;
     }
     core2.info(`Auditing ${packages.length} package(s) via ${rorixUrl}...`);
-    const audit = await auditPackages(packages, rorixUrl);
+    const audit = await auditPackages(packages, rorixUrl, apiKey);
     const result = formatResults(audit, { failOnSeverity, failOnScore, licensePolicy });
     core2.summary.addHeading("Rorix Security Scan", 2);
     core2.summary.addRaw(`

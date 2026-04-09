@@ -7,6 +7,9 @@ branding:
   color: 'red'
 
 inputs:
+  api-key:
+    description: 'Rorix API key (from Settings > API Keys in your Rorix dashboard)'
+    required: true
   fail-on-severity:
     description: 'Minimum CVE severity to fail the check (critical, high, moderate, low, none)'
     required: false

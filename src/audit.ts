@@ -44,7 +44,8 @@ ${refs}
 
 export async function auditPackages(
   packages: PackageRef[],
-  rorixUrl: string
+  rorixUrl: string,
+  apiKey: string
 ): Promise<AuditResponse> {
   if (packages.length === 0) {
     return { packages: [], totalVulns: 0, averageScore: 100 };
@@ -54,7 +55,10 @@ export async function auditPackages(
 
   const res = await fetch(`${rorixUrl}/api/audit`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`,
+    },
     body: JSON.stringify({
       content,
       filename: "scan.csproj",

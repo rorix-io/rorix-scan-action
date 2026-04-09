@@ -4,6 +4,10 @@ A GitHub Action that scans NuGet dependencies for vulnerabilities, license issue
 
 ## Quick Start
 
+1. Get an API key from your [Rorix dashboard](https://rorix.io/dashboard/settings) (Settings > API Keys)
+2. Add it as a repository secret named `RORIX_API_KEY`
+3. Create the workflow:
+
 ```yaml
 # .github/workflows/rorix.yml
 name: Rorix Security Scan
@@ -15,6 +19,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: rorix-io/rorix-scan-action@v1
+        with:
+          api-key: ${{ secrets.RORIX_API_KEY }}
 ```
 
 That's it. The action will scan all NuGet packages in your repository and fail the check if any high or critical CVEs are found.
@@ -24,6 +30,9 @@ That's it. The action will scan all NuGet packages in your repository and fail t
 ```yaml
 - uses: rorix-io/rorix-scan-action@v1
   with:
+    # Required: your Rorix API key
+    api-key: ${{ secrets.RORIX_API_KEY }}
+
     # Minimum CVE severity to fail the check
     # Options: critical, high, moderate, low, none
     # Default: high
@@ -79,6 +88,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: rorix-io/rorix-scan-action@v1
         with:
+          api-key: ${{ secrets.RORIX_API_KEY }}
           diff-only: false
 ```
 
@@ -101,9 +111,9 @@ jobs:
 
 The action writes a detailed summary to the GitHub Actions job summary, including a table of all findings with severity, CVE IDs, and affected packages.
 
-## No API Key Required
+## Authentication
 
-This action uses Rorix's public scan API. No sign-up or API key needed.
+This action requires a Rorix API key. Create one in your [Rorix dashboard](https://rorix.io/dashboard/settings) under Settings > API Keys, then add it as a GitHub repository secret.
 
 ## License
 
