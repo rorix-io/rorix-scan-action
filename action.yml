@@ -1,0 +1,33 @@
+name: 'Rorix Security Scan'
+description: 'Scan NuGet dependencies for vulnerabilities, license issues, and security risks'
+author: 'rorix-dev'
+
+branding:
+  icon: 'shield'
+  color: 'red'
+
+inputs:
+  fail-on-severity:
+    description: 'Minimum CVE severity to fail the check (critical, high, moderate, low, none)'
+    required: false
+    default: 'high'
+  fail-on-score:
+    description: 'Fail if any package security score is below this threshold (0-100)'
+    required: false
+    default: '0'
+  license-policy:
+    description: 'License policy: restrictive (block copyleft), permissive (block unknown), none'
+    required: false
+    default: 'none'
+  diff-only:
+    description: 'Only scan packages that changed vs base branch'
+    required: false
+    default: 'true'
+  rorix-url:
+    description: 'Rorix instance URL (for self-hosted)'
+    required: false
+    default: 'https://rorix.io'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
