@@ -1,6 +1,6 @@
 name: 'Rorix Security Scan'
-description: 'Scan NuGet dependencies for vulnerabilities, license issues, and security risks'
-author: 'rorix-dev'
+description: 'Scan .NET projects for vulnerabilities, generate SBOMs, and enforce security policies'
+author: 'Rorix'
 
 branding:
   icon: 'shield'
@@ -8,29 +8,92 @@ branding:
 
 inputs:
   api-key:
-    description: 'Rorix API key (from Settings > API Keys in your Rorix dashboard)'
+    description: 'Rorix API key (starts with rxk_)'
     required: true
-  fail-on-severity:
-    description: 'Minimum CVE severity to fail the check (critical, high, moderate, low, none)'
+  command:
+    description: 'Command to run: scan, sbom, policy'
     required: false
-    default: 'high'
-  fail-on-score:
-    description: 'Fail if any package security score is below this threshold (0-100)'
+    default: 'scan'
+  format:
+    description: 'Output format: table, json, sarif'
     required: false
-    default: '0'
-  license-policy:
-    description: 'License policy: restrictive (block copyleft), permissive (block unknown), none'
+    default: 'table'
+  policy-file:
+    description: 'Path to .rorix.yml policy file'
     required: false
-    default: 'none'
-  diff-only:
-    description: 'Only scan packages that changed vs base branch'
+  path:
+    description: 'Path to .NET project or directory'
     required: false
-    default: 'true'
-  rorix-url:
-    description: 'Rorix instance URL (for self-hosted)'
+    default: '.'
+  cli-version:
+    description: 'Pinned Rorix.Cli version to install'
     required: false
-    default: 'https://rorix.io'
+    default: '0.1.1'
+
+outputs:
+  sarif-file:
+    description: 'Path to SARIF output file (when format is sarif)'
+    value: ${{ steps.rorix.outputs.sarif-file }}
+  exit-code:
+    description: 'Rorix CLI exit code'
+    value: ${{ steps.rorix.outputs.exit-code }}
 
 runs:
-  using: 'node20'
-  main: 'dist/index.js'
+  using: 'composite'
+  steps:
+    - name: Setup .NET
+      uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      with:
+        dotnet-version: '9.0.x'
+
+    - name: Install Rorix CLI
+      shell: bash
+      env:
+        RORIX_CLI_VERSION: ${{ inputs.cli-version }}
+      run: dotnet tool install --global Rorix.Cli --version "$RORIX_CLI_VERSION"
+
+    - name: Run Rorix
+      id: rorix
+      shell: bash
+      env:
+        RORIX_COMMAND: ${{ inputs.command }}
+        RORIX_FORMAT: ${{ inputs.format }}
+        RORIX_POLICY_FILE: ${{ inputs.policy-file }}
+        RORIX_PATH: ${{ inputs.path }}
+        RORIX_API_KEY: ${{ inputs.api-key }}
+        RORIX_RESULTS_PATH: ${{ runner.temp }}/rorix-results.sarif
+      run: |
+        set -uo pipefail
+        echo "::add-mask::$RORIX_API_KEY"
+
+        case "$RORIX_COMMAND" in
+          scan|sbom|policy) ;;
+          *) echo "::error::Unsupported command: $RORIX_COMMAND"; exit 2 ;;
+        esac
+
+        ARGS=("$RORIX_COMMAND" "$RORIX_PATH")
+        case "$RORIX_COMMAND" in
+          policy)
+            [ -z "$RORIX_POLICY_FILE" ] || ARGS+=(--config "$RORIX_POLICY_FILE")
+            ;;
+          scan)
+            case "$RORIX_FORMAT" in table|json|sarif) ;; *) echo "::error::Unsupported scan format: $RORIX_FORMAT"; exit 2 ;; esac
+            ARGS+=(--format "$RORIX_FORMAT" --exit-code)
+            [ -z "$RORIX_POLICY_FILE" ] || ARGS+=(--policy "$RORIX_POLICY_FILE")
+            ;;
+          sbom)
+            [ "$RORIX_FORMAT" != "table" ] || RORIX_FORMAT="cyclonedx"
+            case "$RORIX_FORMAT" in cyclonedx|spdx) ;; *) echo "::error::Unsupported SBOM format: $RORIX_FORMAT"; exit 2 ;; esac
+            ARGS+=(--format "$RORIX_FORMAT")
+            ;;
+        esac
+
+        EXIT_CODE=0
+        if [ "$RORIX_FORMAT" = "sarif" ] && [ "$RORIX_COMMAND" = "scan" ]; then
+          rorix "${ARGS[@]}" > "$RORIX_RESULTS_PATH" || EXIT_CODE=$?
+          echo "sarif-file=$RORIX_RESULTS_PATH" >> "$GITHUB_OUTPUT"
+        else
+          rorix "${ARGS[@]}" || EXIT_CODE=$?
+        fi
+        echo "exit-code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
+        exit "$EXIT_CODE"
