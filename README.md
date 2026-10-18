@@ -12,4 +12,6 @@ The official GitHub Action for the Rorix supply-chain CLI. It installs the pinne
 
 See the [Rorix GitHub Actions guide](https://rorix.io/docs/integrations/github-actions) for inputs, SARIF upload, policy, and SBOM examples.
 
+The default CLI version is `0.1.3`. Scan runs return a failing job status for blocking vulnerability or license-policy findings, and for missing manifests.
+
 `v1` is the supported moving major tag. Pin a full commit SHA when your repository policy requires immutable third-party Actions.

@@ -13,22 +13,74 @@ permissions:
 
 jobs:
   action:
-    runs-on: ubuntu-latest
+    name: Action (${{ matrix.mode }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - mode: clean
+            path: smoke-project
+            policy_file: ''
+            expected_exit: '0'
+            expected_outcome: success
+          - mode: vulnerability
+            path: smoke-project
+            policy_file: ''
+            expected_exit: '1'
+            expected_outcome: failure
+          - mode: license
+            path: smoke-project
+            policy_file: smoke-project/.rorix.yml
+            expected_exit: '1'
+            expected_outcome: failure
+          - mode: missing
+            path: smoke-empty
+            policy_file: ''
+            expected_exit: '2'
+            expected_outcome: failure
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Create an empty smoke-test workspace
-        run: mkdir smoke-empty
+      - name: Start the local audit fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p smoke-project smoke-empty
+          printf '<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><PackageReference Include="Newtonsoft.Json" Version="13.0.3" /></ItemGroup></Project>\n' > smoke-project/Smoke.csproj
+          printf 'policies:\n  block-licenses:\n    - GPL-3.0-only\n' > smoke-project/.rorix.yml
+          printf '%s\n' '${{ matrix.mode }}' > "$RUNNER_TEMP/rorix-smoke-mode"
+          node .github/scripts/smoke-audit-server.mjs \
+            "$RUNNER_TEMP/rorix-smoke-url" \
+            "$RUNNER_TEMP/rorix-smoke-mode" \
+            > "$RUNNER_TEMP/rorix-smoke-server.log" 2>&1 < /dev/null &
+          for attempt in {1..50}; do
+            if [[ -s "$RUNNER_TEMP/rorix-smoke-url" ]]; then break; fi
+            sleep 0.1
+          done
+          test -s "$RUNNER_TEMP/rorix-smoke-url"
+          echo "RORIX_BASE_URL=$(cat "$RUNNER_TEMP/rorix-smoke-url")" >> "$GITHUB_ENV"
 
-      - name: Install the public CLI and invoke the Action
+      - name: Invoke the public CLI through the Action
         id: rorix
         uses: ./
+        continue-on-error: true
         with:
           api-key: rxk_smoke_test_not_a_real_credential
           command: scan
-          path: smoke-empty
+          path: ${{ matrix.path }}
+          policy-file: ${{ matrix.policy_file }}
 
-      - name: Verify the propagated exit code
+      - name: Verify the propagated security-gate result
+        if: always()
         env:
-          RORIX_EXIT_CODE: ${{ steps.rorix.outputs.exit-code }}
-        run: test "$RORIX_EXIT_CODE" = "0"
+          ACTUAL_OUTCOME: ${{ steps.rorix.outcome }}
+          ACTUAL_EXIT: ${{ steps.rorix.outputs.exit-code }}
+          EXPECTED_OUTCOME: ${{ matrix.expected_outcome }}
+          EXPECTED_EXIT: ${{ matrix.expected_exit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$ACTUAL_OUTCOME" = "$EXPECTED_OUTCOME"
+          test "$ACTUAL_EXIT" = "$EXPECTED_EXIT"
