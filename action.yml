@@ -21,6 +21,10 @@ inputs:
   policy-file:
     description: 'Path to .rorix.yml policy file'
     required: false
+  fail-on-vulnerabilities:
+    description: 'Whether vulnerability findings make a scan fail; scan errors still fail'
+    required: false
+    default: 'true'
   path:
     description: 'Path to .NET project or directory'
     required: false
@@ -59,6 +63,7 @@ runs:
         RORIX_COMMAND: ${{ inputs.command }}
         RORIX_FORMAT: ${{ inputs.format }}
         RORIX_POLICY_FILE: ${{ inputs.policy-file }}
+        RORIX_FAIL_ON_VULNERABILITIES: ${{ inputs.fail-on-vulnerabilities }}
         RORIX_PATH: ${{ inputs.path }}
         RORIX_API_KEY: ${{ inputs.api-key }}
         RORIX_RESULTS_PATH: ${{ runner.temp }}/rorix-results.sarif
@@ -78,7 +83,9 @@ runs:
             ;;
           scan)
             case "$RORIX_FORMAT" in table|json|sarif) ;; *) echo "::error::Unsupported scan format: $RORIX_FORMAT"; exit 2 ;; esac
-            ARGS+=(--format "$RORIX_FORMAT" --exit-code)
+            case "$RORIX_FAIL_ON_VULNERABILITIES" in true|false) ;; *) echo "::error::fail-on-vulnerabilities must be true or false"; exit 2 ;; esac
+            ARGS+=(--format "$RORIX_FORMAT")
+            [ "$RORIX_FAIL_ON_VULNERABILITIES" != "true" ] || ARGS+=(--exit-code)
             [ -z "$RORIX_POLICY_FILE" ] || ARGS+=(--policy "$RORIX_POLICY_FILE")
             ;;
           sbom)

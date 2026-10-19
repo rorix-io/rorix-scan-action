@@ -30,6 +30,13 @@ jobs:
             policy_file: ''
             expected_exit: '1'
             expected_outcome: failure
+          - mode: advisory-vulnerability
+            fixture_mode: vulnerability
+            path: smoke-project
+            policy_file: ''
+            fail_on_vulnerabilities: 'false'
+            expected_exit: '0'
+            expected_outcome: success
           - mode: license
             path: smoke-project
             policy_file: smoke-project/.rorix.yml
@@ -38,6 +45,13 @@ jobs:
           - mode: missing
             path: smoke-empty
             policy_file: ''
+            expected_exit: '2'
+            expected_outcome: failure
+          - mode: advisory-missing
+            fixture_mode: missing
+            path: smoke-empty
+            policy_file: ''
+            fail_on_vulnerabilities: 'false'
             expected_exit: '2'
             expected_outcome: failure
     steps:
@@ -50,7 +64,7 @@ jobs:
           mkdir -p smoke-project smoke-empty
           printf '<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><PackageReference Include="Newtonsoft.Json" Version="13.0.3" /></ItemGroup></Project>\n' > smoke-project/Smoke.csproj
           printf 'policies:\n  block-licenses:\n    - GPL-3.0-only\n' > smoke-project/.rorix.yml
-          printf '%s\n' '${{ matrix.mode }}' > "$RUNNER_TEMP/rorix-smoke-mode"
+          printf '%s\n' '${{ matrix.fixture_mode || matrix.mode }}' > "$RUNNER_TEMP/rorix-smoke-mode"
           node .github/scripts/smoke-audit-server.mjs \
             "$RUNNER_TEMP/rorix-smoke-url" \
             "$RUNNER_TEMP/rorix-smoke-mode" \
@@ -71,6 +85,7 @@ jobs:
           command: scan
           path: ${{ matrix.path }}
           policy-file: ${{ matrix.policy_file }}
+          fail-on-vulnerabilities: ${{ matrix.fail_on_vulnerabilities || 'true' }}
 
       - name: Verify the propagated security-gate result
         if: always()

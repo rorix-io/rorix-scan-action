@@ -14,4 +14,6 @@ See the [Rorix GitHub Actions guide](https://rorix.io/docs/integrations/github-a
 
 The default CLI version is `0.1.3`. Scan runs return a failing job status for blocking vulnerability or license-policy findings, and for missing manifests.
 
+Set `fail-on-vulnerabilities: 'false'` for advisory scans. Vulnerabilities remain in the scan output while missing manifests and scan errors still fail the job. The default remains `true` for existing workflows.
+
 `v1` is the supported moving major tag. Pin a full commit SHA when your repository policy requires immutable third-party Actions.
