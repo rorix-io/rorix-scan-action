@@ -42,6 +42,21 @@ jobs:
             policy_file: smoke-project/.rorix.yml
             expected_exit: '1'
             expected_outcome: failure
+          - mode: license-family
+            path: smoke-project
+            policy_file: smoke-project/family.rorix.yml
+            expected_exit: '1'
+            expected_outcome: failure
+          - mode: allow-outside
+            path: smoke-project
+            policy_file: smoke-project/allow.rorix.yml
+            expected_exit: '1'
+            expected_outcome: failure
+          - mode: allow-dual
+            path: smoke-project
+            policy_file: smoke-project/allow.rorix.yml
+            expected_exit: '0'
+            expected_outcome: success
           - mode: missing
             path: smoke-empty
             policy_file: ''
@@ -64,6 +79,8 @@ jobs:
           mkdir -p smoke-project smoke-empty
           printf '<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><PackageReference Include="Newtonsoft.Json" Version="13.0.3" /></ItemGroup></Project>\n' > smoke-project/Smoke.csproj
           printf 'policies:\n  block-licenses:\n    - GPL-3.0-only\n' > smoke-project/.rorix.yml
+          printf 'policies:\n  block-licenses:\n    - GPL-3.0\n' > smoke-project/family.rorix.yml
+          printf 'policies:\n  allow-licenses:\n    - MIT\n    - Apache-2.0\n' > smoke-project/allow.rorix.yml
           printf '%s\n' '${{ matrix.fixture_mode || matrix.mode }}' > "$RUNNER_TEMP/rorix-smoke-mode"
           node .github/scripts/smoke-audit-server.mjs \
             "$RUNNER_TEMP/rorix-smoke-url" \

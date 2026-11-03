@@ -4,6 +4,14 @@ import { createServer } from "node:http";
 const [urlFile, modeFile] = process.argv.slice(2);
 if (!urlFile || !modeFile) throw new Error("Expected URL and mode file paths");
 
+// License each mode reports for Newtonsoft.Json.
+const LICENSES = {
+  license: "GPL-3.0-only",
+  "license-family": "GPL-3.0-or-later",
+  "allow-outside": "BSD-3-Clause",
+  "allow-dual": "MIT OR GPL-3.0-only",
+};
+
 const server = createServer((request, response) => {
   const pathname = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
   if (request.method !== "POST" || pathname !== "/api/audit") {
@@ -19,9 +27,9 @@ const server = createServer((request, response) => {
     enrichedVulnerabilities: mode === "vulnerability"
       ? [{ id: "TEST-1", severity: "high" }]
       : [],
-    ...(mode === "license" ? { license: "GPL-3.0-only" } : {}),
+    ...(LICENSES[mode] ? { license: LICENSES[mode] } : {}),
   };
-  if (!["clean", "vulnerability", "license", "missing"].includes(mode)) {
+  if (!["clean", "vulnerability", "missing", ...Object.keys(LICENSES)].includes(mode)) {
     response.writeHead(500).end();
     return;
   }
