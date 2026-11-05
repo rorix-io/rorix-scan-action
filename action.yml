@@ -8,8 +8,13 @@ branding:
 
 inputs:
   api-key:
-    description: 'Rorix API key (starts with rxk_)'
-    required: true
+    description: 'Rorix API key (starts with rxk_). Leave empty for keyless CI: the job then needs "permissions: id-token: write" and a repository connected through the Rorix GitHub App'
+    required: false
+    default: ''
+  base-url:
+    description: 'Rorix base URL (default: the RORIX_BASE_URL environment variable, else https://rorix.io); its origin is also the OIDC audience for keyless CI'
+    required: false
+    default: ''
   command:
     description: 'Command to run: scan, sbom, policy'
     required: false
@@ -20,6 +25,9 @@ inputs:
     default: 'table'
   policy-file:
     description: 'Path to .rorix.yml policy file'
+    required: false
+  project-id:
+    description: 'Rorix project id. When set, the policy gate fetches and applies the project''s active license exceptions; without it only .rorix.yml is evaluated'
     required: false
   fail-on-vulnerabilities:
     description: 'Whether vulnerability findings make a scan fail; scan errors still fail'
@@ -32,7 +40,7 @@ inputs:
   cli-version:
     description: 'Pinned Rorix.Cli version to install'
     required: false
-    default: '0.1.5'
+    default: '0.1.6'
 
 outputs:
   sarif-file:
@@ -66,10 +74,69 @@ runs:
         RORIX_FAIL_ON_VULNERABILITIES: ${{ inputs.fail-on-vulnerabilities }}
         RORIX_PATH: ${{ inputs.path }}
         RORIX_API_KEY: ${{ inputs.api-key }}
+        # Inputs use their own names so an empty input never hides a
+        # RORIX_BASE_URL or RORIX_PROJECT_ID the workflow already set.
+        RORIX_INPUT_PROJECT_ID: ${{ inputs.project-id }}
+        RORIX_INPUT_BASE_URL: ${{ inputs.base-url }}
         RORIX_RESULTS_PATH: ${{ runner.temp }}/rorix-results.sarif
       run: |
         set -uo pipefail
-        echo "::add-mask::$RORIX_API_KEY"
+        [ -z "$RORIX_API_KEY" ] || echo "::add-mask::$RORIX_API_KEY"
+
+        RORIX_PROJECT_ID="${RORIX_INPUT_PROJECT_ID:-${RORIX_PROJECT_ID:-}}"
+        RORIX_BASE_URL="${RORIX_INPUT_BASE_URL:-${RORIX_BASE_URL:-https://rorix.io}}"
+        RORIX_BASE_URL="${RORIX_BASE_URL%/}"
+        case "$RORIX_BASE_URL" in
+          https://*|http://localhost|http://localhost:*|http://127.0.0.1|http://127.0.0.1:*) ;;
+          *) echo "::error::base-url must be an https URL"; exit 2 ;;
+        esac
+        export RORIX_BASE_URL
+
+        if [ -z "$RORIX_API_KEY" ]; then
+          # Keyless CI: exchange this job's GitHub OIDC token for a short-lived,
+          # scan-only Rorix credential. Neither token is ever printed.
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+            echo "::error::No api-key was given and this job cannot request a GitHub OIDC token. Add 'permissions: id-token: write' to the job or pass api-key."
+            exit 2
+          fi
+          RORIX_AUDIENCE="$(printf '%s' "$RORIX_BASE_URL" | sed -E 's#^(https?://[^/]+).*#\1#')"
+          OIDC_URL="$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$(jq -rn --arg value "$RORIX_AUDIENCE" '$value|@uri')"
+          OIDC_TOKEN="$(curl -sSf --retry 2 -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$OIDC_URL" | jq -r '.value // empty')" || OIDC_TOKEN=""
+          if [ -z "$OIDC_TOKEN" ]; then
+            echo "::error::Could not obtain a GitHub OIDC token for $RORIX_AUDIENCE"
+            exit 2
+          fi
+          echo "::add-mask::$OIDC_TOKEN"
+
+          EXCHANGE_FILE="$(mktemp)"
+          EXCHANGE_STATUS="$(jq -cn --arg token "$OIDC_TOKEN" '{token: $token}' \
+            | curl -sS --retry 2 -o "$EXCHANGE_FILE" -w '%{http_code}' -X POST \
+                -H 'Content-Type: application/json' --data-binary @- \
+                "$RORIX_BASE_URL/api/ci/github/oidc-exchange")" || EXCHANGE_STATUS="000"
+          unset OIDC_TOKEN
+          if [ "$EXCHANGE_STATUS" != "200" ]; then
+            REASON="$(jq -r '.error // empty' "$EXCHANGE_FILE" 2>/dev/null || true)"
+            rm -f "$EXCHANGE_FILE"
+            echo "::error::Rorix refused keyless CI (HTTP $EXCHANGE_STATUS). ${REASON:-Connect this repository through the Rorix GitHub App or pass api-key.}"
+            exit 2
+          fi
+          RORIX_API_KEY="$(jq -r '.token // empty' "$EXCHANGE_FILE")"
+          # The credential is bound to one project; use it for license exceptions.
+          [ -n "${RORIX_PROJECT_ID:-}" ] || RORIX_PROJECT_ID="$(jq -r '.projectId // empty' "$EXCHANGE_FILE")"
+          rm -f "$EXCHANGE_FILE"
+          if [ -z "$RORIX_API_KEY" ]; then
+            echo "::error::Rorix returned no CI scan credential"
+            exit 2
+          fi
+          echo "::add-mask::$RORIX_API_KEY"
+          # Later steps of this job (such as a separate policy gate) reuse the
+          # credential; it is scan-only and expires within 15 minutes.
+          echo "RORIX_API_KEY=$RORIX_API_KEY" >> "$GITHUB_ENV"
+          echo "RORIX_BASE_URL=$RORIX_BASE_URL" >> "$GITHUB_ENV"
+          [ -z "${RORIX_PROJECT_ID:-}" ] || echo "RORIX_PROJECT_ID=$RORIX_PROJECT_ID" >> "$GITHUB_ENV"
+        fi
+        export RORIX_API_KEY
+        export RORIX_PROJECT_ID="${RORIX_PROJECT_ID:-}"
 
         case "$RORIX_COMMAND" in
           scan|sbom|policy) ;;
