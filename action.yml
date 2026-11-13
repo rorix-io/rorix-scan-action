@@ -40,7 +40,7 @@ inputs:
   cli-version:
     description: 'Pinned Rorix.Cli version to install'
     required: false
-    default: '0.1.6'
+    default: '0.1.7'
 
 outputs:
   sarif-file:
